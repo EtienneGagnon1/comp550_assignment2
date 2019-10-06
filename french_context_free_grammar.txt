@@ -1,0 +1,45 @@
+
+P   Phrase
+PN  Phrase nominale
+PV  Phrase verbale
+CP  Phrase complément
+
+N   Nom
+NP  Nom propre
+NC  Nom commun
+
+PR  Pronom
+PR1 Pronom première personne
+PR2 Pronom deuxième personne
+PR3m Pronom troisième personne masculin
+PR3f Pronom troisième personne féminin
+PR3i Pronom troisième personne indéfini
+PR4 Pronom première personne du pluriel
+PR5 Pronom deuxième personne du pluriel
+PR6m Pronom troisième personne du pluriel masculin
+PR6f Pronom troisième personne du pluriel féminin
+
+A   Adjectif
+
+D  Déterminant
+AD  Adjectif déterminatif
+At  Article
+
+
+Règles:
+
+P ->
+
+PR -> PR1 | PR2 | PR3m | PR3f | PR3i | PR4 | PR5 | PR6m | PR6f
+PR1 -> je
+PR2 -> tu
+PR3m -> il
+PR3f -> elle
+PR3i -> on
+PR4 -> nous
+PR5 -> vous
+PR6m -> ils
+PR6f -> elles
+
+
+
