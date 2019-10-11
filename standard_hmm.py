@@ -1,9 +1,21 @@
+import re
 from nltk.tag import hmm
-from nltk.tokenize import word_tokenize
-from nltk.probability import LaplaceProbDist
+from nltk.probability import LaplaceProbDist, ConditionalFreqDist, FreqDist
 from typing import List, Dict, AnyStr
+from unicodedata import normalize
+from nltk.tokenize import word_tokenize
 from numpy import mean
-import sys
+import nltk
+import argparse
+from nltk.corpus import treebank
+
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('-laplace', help="adds laplace smoothing", action="store_true")
+parser.add_argument('-lm', help="informs the character transitions in english using extra-text", action='store_true')
+parser.add_argument('cipher', type=str)
+args = parser.parse_args()
 
 
 def read_in_ciphers(directory):
@@ -62,40 +74,46 @@ def tag_test_set(test_cipher: List) -> List:
     return corrected_sentences
 
 
-def find_per_token_accuracy(corrected_test_sentence: str, gold_standard: str) -> List:
-    tokenized_corrected_sentence = word_tokenize(corrected_test_sentence)
-    tokenized_gold_standard_sentence = word_tokenize(gold_standard)
-
-    number_of_tokens = len(tokenized_gold_standard_sentence)
-
-    accuracy_per_token = []
-    for i in range(number_of_tokens):
-        predicted_token = tokenized_corrected_sentence[i]
-        actual_token = tokenized_gold_standard_sentence[i]
-
-        token_length = len(actual_token)
-        matches = 0
-        if predicted_token == actual_token:
-            matches = token_length
-        else:
-            for i in len(predicted_token):
-                predicted_letter = predicted_token[i]
-                actual_letter = actual_token[i]
-                if predicted_letter == actual_letter:
-                    matches += 1
-
-        token_accuracy = matches/token_length
-        accuracy_per_token.append(token_accuracy)
-
-    return accuracy_per_token
-
-
-def find_test_set_accuracy(predicted_sentences: List, gold_standard_sentences: List):
-    sentence_accuracy = []
+def find_accuracy_per_sentence(predicted_sentences: List, gold_standard_sentences: List):
+    all_sentences_accuracy = []
     for i in range(len(predicted_sentences)):
-        accuracy = mean(find_per_token_accuracy(predicted_sentences[i], gold_standard_sentences[i]))
-        sentence_accuracy.append(accuracy)
-    return mean(sentence_accuracy)
+        matching_characters = 0
+        for i in range(len(predicted_sentences[i])):
+            predicted_character = predicted_sentences[i]
+            actual_character = gold_standard_sentences[i]
+            if predicted_character == actual_character:
+                matching_characters += 1
+        accuracy = matching_characters/len(predicted_sentences[i])        
+        all_sentences_accuracy.append(accuracy)
+    return all_sentences_accuracy
+
+
+def find_total_accuracy(predicted_sentences: List, gold_standard_sentences: List):
+    matching_characters = 0
+    for i in range(len(predicted_sentences)):
+        for i in range(len(predicted_sentences[i])):
+            predicted_character = predicted_sentences[i]
+            actual_character = gold_standard_sentences[i]
+            if predicted_character == actual_character:
+                matching_characters += 1
+    accuracy = matching_characters/sum(len(sentence) for sentence in predicted_sentences)
+    return accuracy
+
+
+def find_total_accuracy(predicted_sentences: List, gold_standard_sentences: List):
+    predicted_string = ''.join(predicted_sentences)
+    gold_standard_string = ''.join(gold_standard_sentences)
+
+    matches = 0
+    for i in range(len(predicted_string)):
+        predicted_character = predicted_string[i]
+        actual_character = gold_standard_string[i]
+
+        if predicted_character == actual_character:
+            matches += 1
+
+    accuracy = matches/len(predicted_string)
+    return accuracy
 
 
 def extract_predicted_sequence(predicted_sequence: List) -> List:
@@ -106,21 +124,65 @@ def extract_predicted_sequence(predicted_sequence: List) -> List:
     return prediction
 
 
-def answer_first_question(cipher: str):
-    cipher_test, cipher_train, plaintext_test, plaintext_train = read_in_ciphers(cipher)
+def clean_additional_text(additional_text: str) -> str:
+    def remove_unicode_tags(additional_text: str):
+        unicode = re.compile(r'[^\x00-\x7F]+')
+        remove_lineskip = re.compile("\n")
+
+        additional_text = unicode.sub(r'[^\x00-\x7F]+', ' ', additional_text)
+        additional_text = remove_lineskip.sub(' ', additional_text)
+
+        return additional_text
+
+
+    allowed_states = re.compile('[^a-z,.\s]')
+    white_space_before_period = re.compile('(\s*\.)')
+
+    additional_text = remove_unicode_tags(additional_text)
+
+    lower_cased = additional_text.lower()
+    allowed_states = allowed_states.sub('', lower_cased)
+    allowed_states_nowhitespace = white_space_before_period.sub('.', allowed_states)
+
+    return allowed_states_nowhitespace
+
+
+def find_transition_frequency(additional_sentences: str):
+    condtional_freq_dist = ConditionalFreqDist()
+    unique_characters = set(additional_sentences)
+
+    for character in unique_characters:
+        matches = re.findall('(?<={})[a-z,.\s]'.format(character), additional_sentences)
+        condtional_freq_dist[character] = FreqDist(matches)
+
+    return condtional_freq_dist
+
+
+def main():
+    cipher_test, cipher_train, plaintext_test, plaintext_train = read_in_ciphers(args.cipher)
 
     training_set = []
     for i in range(len(cipher_train) - 1):
-        print(i)
         training_units = turn_training_observation_into_nltk_format(cipher_train[i], plaintext_train[i])
         training_set.append(training_units)
 
-    if "laplace" in sys.argv:
-        hidden_markov_trainer = hmm.HiddenMarkovModelTrainer(estimator=LaplaceProbDist)
-    else:
-        hidden_markov_trainer = hmm.HiddenMarkovModelTrainer()
+    if args.lm:
+        with open('frankenstein_ulysses_hrtofdarkness.txt', 'rb') as f:
+            extra_text = f.read()
+            extra_text = str(extra_text)
+            normalize('NFKD', extra_text).encode('ascii')
 
-    tagger = hidden_markov_trainer.train_supervised(training_set)
+        extra_text = clean_additional_text(extra_text)
+
+        additional_text_transitions = find_transition_frequency(extra_text)
+        hidden_markov_trainer = hmm.HiddenMarkovModelTagger(transitions=additional_text_transitions)
+    else:
+        hidden_markov_trainer = hmm.HiddenMarkovModelTagger()
+
+    if args.laplace:
+        tagger = hidden_markov_trainer.train(training_set, estimator=LaplaceProbDist)
+    else:
+        tagger = hidden_markov_trainer.train(training_set)
 
     test_set = turn_test_cipher_into_nltk_format(cipher_test)
 
@@ -128,32 +190,23 @@ def answer_first_question(cipher: str):
     predicted_sequence = extract_predicted_sequence(predictions)
     recomposed_sentences = [''.join(sentence) for sentence in predicted_sequence]
 
+    print('\n')
+    print('These sentences were decoded using the hidden markov model: \n')
+
     for sentence in recomposed_sentences:
         print(sentence)
 
+    print('\n')
 
-def main():
-    cipher_test, cipher_train, plaintext_test, plaintext_train = read_in_ciphers('cipher2')
+    sentence_accuracy = find_accuracy_per_sentence(recomposed_sentences, plaintext_test)
 
-    training_set = []
-    for i in range(len(cipher_train) - 1):
-        print(i)
-        training_units = turn_training_observation_into_nltk_format(cipher_train[i], plaintext_train[i])
-        training_set.append(training_units)
+    for (counter, value) in enumerate(sentence_accuracy):
+        print('The per token accuracy in sentence %i was %f' % (counter, value))
 
-    hidden_markov_trainer = hmm.HiddenMarkovModelTrainer()
-    smooth_tagger = hidden_markov_trainer.train_supervised(training_set, estimator=LaplaceProbDist)
-    tagger = hidden_markov_trainer.train_supervised(training_set)
+    print('\n')
+    whole_text_accuracy = find_total_accuracy(recomposed_sentences, plaintext_test)
+    print('The accuracy for the whole text was %s' % whole_text_accuracy)
 
 
-    test_set = turn_test_cipher_into_nltk_format(cipher_test)
-    tagger.tag(test_set[0])
-    smooth_tagger.tag(test_set[0])
-
-    predictions = [smooth_tagger.tag(test_sentence) for test_sentence in test_set]
-    predicted_sequence = extract_predicted_sequence(predictions)
-
-
-    plaintext_test
 
 
