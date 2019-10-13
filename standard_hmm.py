@@ -1,6 +1,6 @@
 import re
 from nltk.tag import hmm
-from nltk.probability import LaplaceProbDist, ConditionalFreqDist, FreqDist
+from nltk.probability import LaplaceProbDist, ConditionalFreqDist, FreqDist, ConditionalProbDist, MLEProbDist
 from typing import List, Dict, AnyStr
 from unicodedata import normalize
 from nltk.tokenize import word_tokenize
@@ -8,6 +8,7 @@ from numpy import mean
 import nltk
 import argparse
 from nltk.corpus import treebank
+import inspect
 
 
 parser = argparse.ArgumentParser()
@@ -21,7 +22,9 @@ args = parser.parse_args()
 def read_in_ciphers(directory):
     def clean_strings_format(sample: List) -> List:
         cleaned_sample = [string.decode('unicode_escape') for string in sample]
-        return cleaned_sample
+        remove_lineskip = [sentence.replace('\n', '') for sentence in cleaned_sample]
+        remove_lineskip = [sentence.replace('\r', '') for sentence in remove_lineskip]
+        return remove_lineskip
 
     with open(directory + '/test_cipher.txt', 'rb') as f:
         test_cipher = f.readlines()
@@ -78,26 +81,14 @@ def find_accuracy_per_sentence(predicted_sentences: List, gold_standard_sentence
     all_sentences_accuracy = []
     for i in range(len(predicted_sentences)):
         matching_characters = 0
-        for i in range(len(predicted_sentences[i])):
-            predicted_character = predicted_sentences[i]
-            actual_character = gold_standard_sentences[i]
+        for k in range(len(predicted_sentences[i])):
+            predicted_character = predicted_sentences[i][k]
+            actual_character = gold_standard_sentences[i][k]
             if predicted_character == actual_character:
                 matching_characters += 1
-        accuracy = matching_characters/len(predicted_sentences[i])        
+        accuracy = matching_characters/len(predicted_sentences[k])
         all_sentences_accuracy.append(accuracy)
     return all_sentences_accuracy
-
-
-def find_total_accuracy(predicted_sentences: List, gold_standard_sentences: List):
-    matching_characters = 0
-    for i in range(len(predicted_sentences)):
-        for i in range(len(predicted_sentences[i])):
-            predicted_character = predicted_sentences[i]
-            actual_character = gold_standard_sentences[i]
-            if predicted_character == actual_character:
-                matching_characters += 1
-    accuracy = matching_characters/sum(len(sentence) for sentence in predicted_sentences)
-    return accuracy
 
 
 def find_total_accuracy(predicted_sentences: List, gold_standard_sentences: List):
@@ -125,64 +116,62 @@ def extract_predicted_sequence(predicted_sequence: List) -> List:
 
 
 def clean_additional_text(additional_text: str) -> str:
-    def remove_unicode_tags(additional_text: str):
-        unicode = re.compile(r'[^\x00-\x7F]+')
-        remove_lineskip = re.compile("\n")
-
-        additional_text = unicode.sub(r'[^\x00-\x7F]+', ' ', additional_text)
-        additional_text = remove_lineskip.sub(' ', additional_text)
-
-        return additional_text
-
-
     allowed_states = re.compile('[^a-z,.\s]')
     white_space_before_period = re.compile('(\s*\.)')
 
-    additional_text = remove_unicode_tags(additional_text)
-
     lower_cased = additional_text.lower()
     allowed_states = allowed_states.sub('', lower_cased)
-    allowed_states_nowhitespace = white_space_before_period.sub('.', allowed_states)
+    additional_text = white_space_before_period.sub('.', allowed_states)
 
-    return allowed_states_nowhitespace
+    return additional_text
 
 
 def find_transition_frequency(additional_sentences: str):
-    condtional_freq_dist = ConditionalFreqDist()
+    conditional_freq_dist = ConditionalFreqDist()
     unique_characters = set(additional_sentences)
 
     for character in unique_characters:
         matches = re.findall('(?<={})[a-z,.\s]'.format(character), additional_sentences)
-        condtional_freq_dist[character] = FreqDist(matches)
+        conditional_freq_dist[character] = FreqDist(matches)
 
-    return condtional_freq_dist
+    return conditional_freq_dist
 
 
 def main():
+    if args.laplace:
+        estimation_method = LaplaceProbDist
+    else:
+        estimation_method = MLEProbDist
+
     cipher_test, cipher_train, plaintext_test, plaintext_train = read_in_ciphers(args.cipher)
 
     training_set = []
-    for i in range(len(cipher_train) - 1):
+    for i in range(len(cipher_train)):
         training_units = turn_training_observation_into_nltk_format(cipher_train[i], plaintext_train[i])
         training_set.append(training_units)
+
+    hidden_markov_trainer = hmm.HiddenMarkovModelTrainer()
+    tagger = hidden_markov_trainer.train_supervised(training_set, estimator=estimation_method)
 
     if args.lm:
         with open('frankenstein_ulysses_hrtofdarkness.txt', 'rb') as f:
             extra_text = f.read()
             extra_text = str(extra_text)
-            normalize('NFKD', extra_text).encode('ascii')
+
+        extra_text = extra_text.replace(r'\r', '')
+        extra_text = extra_text.replace(r'\n', '')
+        extra_text = extra_text.replace(r'\x', '')
 
         extra_text = clean_additional_text(extra_text)
 
         additional_text_transitions = find_transition_frequency(extra_text)
-        hidden_markov_trainer = hmm.HiddenMarkovModelTagger(transitions=additional_text_transitions)
-    else:
-        hidden_markov_trainer = hmm.HiddenMarkovModelTagger()
+        original_text_transitions = find_transition_frequency(''.join(plaintext_train))
 
-    if args.laplace:
-        tagger = hidden_markov_trainer.train(training_set, estimator=LaplaceProbDist)
-    else:
-        tagger = hidden_markov_trainer.train(training_set)
+        combined_transition_frequency = additional_text_transitions.__add__(original_text_transitions)
+
+        tagger._transitions = ConditionalProbDist(
+            combined_transition_frequency, estimation_method, len(combined_transition_frequency.keys()))
+
 
     test_set = turn_test_cipher_into_nltk_format(cipher_test)
 
@@ -198,15 +187,21 @@ def main():
 
     print('\n')
 
+    whole_text_accuracy = find_total_accuracy(recomposed_sentences, plaintext_test)
+    print('The accuracy for the whole text was %s' % whole_text_accuracy)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+"""
     sentence_accuracy = find_accuracy_per_sentence(recomposed_sentences, plaintext_test)
 
     for (counter, value) in enumerate(sentence_accuracy):
         print('The per token accuracy in sentence %i was %f' % (counter, value))
 
     print('\n')
-    whole_text_accuracy = find_total_accuracy(recomposed_sentences, plaintext_test)
-    print('The accuracy for the whole text was %s' % whole_text_accuracy)
 
-
-
-
+"""

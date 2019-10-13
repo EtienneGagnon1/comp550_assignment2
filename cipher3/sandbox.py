@@ -19,6 +19,10 @@ print(allowed_states.('a', ''))
 for i in treebank_sentence[0]:
     print(type(i))
 
+for i in additional_text_transitions.keys():
+    if i not in tagger._transitions.keys():
+
+        print(i)
 
 
 

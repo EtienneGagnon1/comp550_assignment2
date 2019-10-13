@@ -28,7 +28,8 @@ At  Article
 
 Règles:
 
-P ->
+P -> PN | PV | PN PV | PV PN | CP PN PV | PN PV CP | PV PN CP
+
 
 PR -> PR1 | PR2 | PR3m | PR3f | PR3i | PR4 | PR5 | PR6m | PR6f
 PR1 -> je
