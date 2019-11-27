@@ -1,14 +1,12 @@
 import re
 from nltk.tag import hmm
 from nltk.probability import LaplaceProbDist, ConditionalFreqDist, FreqDist, ConditionalProbDist, MLEProbDist
-from typing import List, Dict, AnyStr
-from unicodedata import normalize
-from nltk.tokenize import word_tokenize
-from numpy import mean
-import nltk
+from typing import List
 import argparse
-from nltk.corpus import treebank
-import inspect
+import os
+
+
+
 
 
 parser = argparse.ArgumentParser()
@@ -30,7 +28,7 @@ def read_in_ciphers(directory):
         test_cipher = f.readlines()
         test_cipher = clean_strings_format(test_cipher)
 
-    with open(directory +'/train_cipher.txt', 'rb') as f:
+    with open(directory + '/train_cipher.txt', 'rb') as f:
         train_cipher = f.readlines()
         train_cipher = clean_strings_format(train_cipher)
 
@@ -75,20 +73,6 @@ def tag_test_set(test_cipher: List) -> List:
         corrected_sentences.append(tagged_sentence)
 
     return corrected_sentences
-
-
-def find_accuracy_per_sentence(predicted_sentences: List, gold_standard_sentences: List):
-    all_sentences_accuracy = []
-    for i in range(len(predicted_sentences)):
-        matching_characters = 0
-        for k in range(len(predicted_sentences[i])):
-            predicted_character = predicted_sentences[i][k]
-            actual_character = gold_standard_sentences[i][k]
-            if predicted_character == actual_character:
-                matching_characters += 1
-        accuracy = matching_characters/len(predicted_sentences[k])
-        all_sentences_accuracy.append(accuracy)
-    return all_sentences_accuracy
 
 
 def find_total_accuracy(predicted_sentences: List, gold_standard_sentences: List):
@@ -138,12 +122,16 @@ def find_transition_frequency(additional_sentences: str):
 
 
 def main():
+
+    path_to_directory = os.path.abspath(os.path.curdir)
+    path_to_cipher = os.path.join(path_to_directory, args.cipher)
+
     if args.laplace:
         estimation_method = LaplaceProbDist
     else:
         estimation_method = MLEProbDist
 
-    cipher_test, cipher_train, plaintext_test, plaintext_train = read_in_ciphers(args.cipher)
+    cipher_test, cipher_train, plaintext_test, plaintext_train = read_in_ciphers(path_to_cipher)
 
     training_set = []
     for i in range(len(cipher_train)):
@@ -172,7 +160,6 @@ def main():
         tagger._transitions = ConditionalProbDist(
             combined_transition_frequency, estimation_method, len(combined_transition_frequency.keys()))
 
-
     test_set = turn_test_cipher_into_nltk_format(cipher_test)
 
     predictions = [tagger.tag(test_sentence) for test_sentence in test_set]
@@ -196,12 +183,28 @@ if __name__ == "__main__":
 
 
 
-"""
-    sentence_accuracy = find_accuracy_per_sentence(recomposed_sentences, plaintext_test)
-
-    for (counter, value) in enumerate(sentence_accuracy):
-        print('The per token accuracy in sentence %i was %f' % (counter, value))
-
-    print('\n')
 
 """
+sentence_accuracy = find_accuracy_per_sentence(recomposed_sentences, plaintext_test)
+
+for (counter, value) in enumerate(sentence_accuracy):
+    print('The per token accuracy in sentence %i was %f' % (counter, value))
+
+print('\n')
+x1
+
+
+def find_accuracy_per_sentence(predicted_sentences: List, gold_standard_sentences: List):
+    all_sentences_accuracy = []
+    for i in range(len(predicted_sentences)):
+        matching_characters = 0
+        for k in range(len(predicted_sentences[i])):
+            predicted_character = predicted_sentences[i][k]
+            actual_character = gold_standard_sentences[i][k]
+            if predicted_character == actual_character:
+                matching_characters += 1
+        accuracy = matching_characters/len(predicted_sentences[k])
+        all_sentences_accuracy.append(accuracy)
+    return all_sentences_accuracy
+"""
+
