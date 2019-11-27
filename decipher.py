@@ -6,17 +6,6 @@ import argparse
 import os
 
 
-
-
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument('-laplace', help="adds laplace smoothing", action="store_true")
-parser.add_argument('-lm', help="informs the character transitions in english using extra-text", action='store_true')
-parser.add_argument('cipher', type=str)
-args = parser.parse_args()
-
-
 def read_in_ciphers(directory):
     def clean_strings_format(sample: List) -> List:
         cleaned_sample = [string.decode('unicode_escape') for string in sample]
@@ -122,6 +111,12 @@ def find_transition_frequency(additional_sentences: str):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-laplace', help="adds laplace smoothing", action="store_true")
+    parser.add_argument('-lm', help="informs the character transitions in english using extra-text",
+                        action='store_true')
+    parser.add_argument('cipher', help='select the cipher that you want to decode', type=str)
+    args = parser.parse_args()
 
     path_to_directory = os.path.abspath(os.path.curdir)
     path_to_cipher = os.path.join(path_to_directory, args.cipher)
@@ -181,30 +176,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-
-
-"""
-sentence_accuracy = find_accuracy_per_sentence(recomposed_sentences, plaintext_test)
-
-for (counter, value) in enumerate(sentence_accuracy):
-    print('The per token accuracy in sentence %i was %f' % (counter, value))
-
-print('\n')
-x1
-
-
-def find_accuracy_per_sentence(predicted_sentences: List, gold_standard_sentences: List):
-    all_sentences_accuracy = []
-    for i in range(len(predicted_sentences)):
-        matching_characters = 0
-        for k in range(len(predicted_sentences[i])):
-            predicted_character = predicted_sentences[i][k]
-            actual_character = gold_standard_sentences[i][k]
-            if predicted_character == actual_character:
-                matching_characters += 1
-        accuracy = matching_characters/len(predicted_sentences[k])
-        all_sentences_accuracy.append(accuracy)
-    return all_sentences_accuracy
-"""
 
